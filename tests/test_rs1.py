@@ -125,5 +125,4 @@ class RS1TestCase(unittest.TestCase):
 		with self.engine.momentary_press(["ACR_HW_EN_RT", "EPICS_RS1_SRCH_SET_BTN"]):
 			with self.engine.momentary_press("RS1_SRCH_SET_KSW_RT"):
 				pass
-		self.assertFalse(self.engine.state.RS1_SRCH_SET_LAT, "RS1 search not set with all conditions met.")
-		
+		self.assertTrue(self.engine.state.RS1_SRCH_SET_LAT, "RS1 search not set with all conditions met.")
