@@ -85,7 +85,11 @@ def rs1_preset_2(state: RSYState, prev_state: RSYState, timers: RSYTimers):
 
 def rs1_preset_2_led(state: RSYState, prev_state: RSYState, timers: RSYTimers):
 	new_state = state.copy()
-	new_state.RS1_PR2_LED = state.RS1_DIB_ACTIVE and bool(timers.RS1_DIB_PULSER) and state.RS1_PR2_LAT
+	if state.RS1_DIB_ACTIVE and not timers.RS1_DIB_PULSER.running():
+		timers.RS1_DIB_PULSER.start()
+	elif not state.RS1_DIB_ACTIVE:
+		timers.RS1_DIB_PULSER.stop()
+	new_state.RS1_PR2_LED = state.RS1_DIB_ACTIVE and (not bool(timers.RS1_DIB_PULSER)) and state.RS1_PR2_LAT
 	return new_state
 
 def rs1_gate_closed_interlock(state: RSYState, prev_state: RSYState, timers: RSYTimers):
