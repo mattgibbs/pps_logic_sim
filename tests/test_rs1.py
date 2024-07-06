@@ -34,7 +34,7 @@ class RS1TestCase(unittest.TestCase):
 			EPICS_RS1_SRCH_SET_BTN = False,
 			RS1_SRCH_SET_LED = False
 		)
-		timer_fast_forward_factor = 20
+		timer_fast_forward_factor = 1
 		rs1_timers = logic.RSYTimers(
 			RS1_SRCH_TMR = Timer(10/timer_fast_forward_factor),
 			RS1_DIB_TMR = Timer(15/timer_fast_forward_factor),
@@ -81,11 +81,15 @@ class RS1TestCase(unittest.TestCase):
 		self.engine.state.RS1_GT_CLS_RT = False
 		self.engine.process()
 		self.assertTrue(self.engine.state.RS1_GT_CLS_ILCK, "RS1 Gate Closed Interlock is not True with gate open and RS1 DIB Active.")
-		
-		while (time.time() - self.engine.timers.RS1_DIB_TMR.time_started()) < self.engine.timers.RS1_DIB_TMR.duration():
-			time.sleep(self.engine.timers.RS1_DIB_TMR.duration() / 10)
-		
-		time.sleep(self.engine.timers.RS1_DIB_TMR.duration())
+		with self.subTest(msg="RS1 Preset 2 LED Tests"):
+			preset_2_led_values = []
+			while (time.time() - self.engine.timers.RS1_DIB_TMR.time_started()) < self.engine.timers.RS1_DIB_TMR.duration():
+				self.engine.process()
+				preset_2_led_values.append(self.engine.state.RS1_PR2_LED)
+				time.sleep(self.engine.timers.RS1_DIB_TMR.duration() / 10)
+			self.assertFalse(all(preset_2_led_values), "RS1 Preset 2 LED is not flashing (always on).")
+			self.assertFalse(not any(preset_2_led_values), "RS1 Preset 2 LED is not flashing (always off).")
+		# Leave the gate open and let the DIB expire.
 		self.engine.process()
 		self.assertFalse(self.engine.state.RS1_GT_CLS_ILCK, "RS1 Gate Closed Interlock still True even after DIB timer expired.")
 	
