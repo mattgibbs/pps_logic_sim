@@ -9,7 +9,10 @@ class Pulser:
 	def start(self):
 		self._running = True
 		self._time_started = time.time()
-		
+	
+	def running(self):
+		return self._running
+	
 	def stop(self):
 		self._running = False
 	
