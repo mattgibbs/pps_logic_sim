@@ -251,6 +251,27 @@ class RSYState:
 	EPICS_RS2_SRCH_SET_BTN: bool
 	RS2_SRCH_SET_LED: bool
 
+	##RSY Zone
+	KYBNK_N_REL_EPICS_BTN: bool
+	KYBNK_N_REL: bool
+	KYBNK_S_REL_EPICS_BTN: bool
+	KYBNK_S_REL: bool
+	KYBNK_N_COMPLETE_RT: bool
+	KYBNK_N_CMPLT_LAT: bool
+	KYBNK_S_COMPLETE_RT: bool
+	KYBNK_S_CMPLT_LAT: bool
+	ALL_KYBNK_CMPLT_LAT: bool
+	RSY_ZN_CLS_LAT: bool
+	ILCKS_CMPLT: bool
+	RSY_SRCHD: bool
+	RSY_SECURITY_VIOLATION: bool
+	EPICS_NO_ACCESS_BTN: bool
+	EPICS_PERMITTED_ACCESS_BTN: bool
+	NO_ACCESS: bool
+	AV_WARN_CMPLT: bool
+	AV_WARN: bool
+	RSY_SECURE: bool
+
 	def copy(self):
 		return replace(self)
 
@@ -306,11 +327,85 @@ class RSYTimers:
 	RT1_DIB_PULSER: Pulser
 	RT1_SEARCH_LED_PULSER: Pulser
 
+	AV_WARN_TMR: Timer
+
 def rising(state, prev_state, key):
 	return getattr(prev_state,key) == False and getattr(state,key) == True
 
 def falling(state, prev_state, key):
 	return getattr(prev_state,key) == True and getattr(state,key) == False
+
+#____
+
+def north_keybank_release(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.KYBNK_N_REL = state.ACR_HW_EN_RT and state.PERMITTED_ACCESS and state.KYBNK_N_REL_EPICS_BTN
+	return new_state	
+
+def south_keybank_release(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.KYBNK_S_REL = state.ACR_HW_EN_RT and state.PERMITTED_ACCESS and state.KYBNK_S_REL_EPICS_BTN
+	return new_state	
+
+def north_keybank_complete_latch(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.KYBNK_N_CMPLT_LAT = ((state.ACR_HW_EN_RT and state.EPICS_ILCK_SET_BTN and state.PERMITTED_ACCESS) or state.KYBNK_N_CMPLT_LAT) and state.KYBNK_N_COMPLETE_RT
+	return new_state
+
+def south_keybank_complete_latch(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.KYBNK_S_CMPLT_LAT = ((state.ACR_HW_EN_RT and state.EPICS_ILCK_SET_BTN and state.PERMITTED_ACCESS) or state.KYBNK_S_CMPLT_LAT) and state.KYBNK_S_COMPLETE_RT
+	return new_state
+
+def keybanks_complete_latch(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.ALL_KYBNK_CMPLT_LAT = state.KYBNK_N_CMPLT_LAT and state.KYBNK_S_CMPLT_LAT
+	return new_state
+
+def rsy_all_gates_and_doors_closed(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.RSY_ZN_CLS_LAT = state.RS1A_GT_CLS_LAT and state.RS2_ALL_GTS_DRS_CLS_LAT and state.RS3_ALL_GTS_DRS_CLS_LAT and state.RS4_ALL_GTS_DRS_CLS_LAT and state.RS5_ALL_GTS_DRS_CLS_LAT and state.RT1_ALL_GTS_CLS_LAT
+	return new_state
+
+def interlock_complete(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.ILCKS_CMPLT = state.RSY_ZN_CLS_LAT and state.ALL_KYBNK_CMPLT_LAT
+	return new_state	
+
+def rsy_searched(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.RSY_SRCHD = state.RS1_SRCH_SET_LAT and state.RS2_SRCH_SET_LAT and state.RS3_SRCH_SET_LAT and state.RS4_SRCH_SET_LAT and state.RS5_SRCH_SET_LAT and state.RT1_SRCH_SET_LAT
+	return new_state	
+
+def no_access_permitted_access(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	rsy_stuff = state.RSY_SRCHD and state.ACR_HW_EN_RT and rising(state, prev_state, 'EPICS_NO_ACCESS_BTN') and state.ILCKS_CMPLT and (not state.EPICS_PERMITTED_ACCESS_BTN)
+	no_access_stuff = (not state.EPICS_NO_ACCESS_BTN) and state.ACR_HW_EN_RT and rising(state, prev_state, 'EPICS_PERMITTED_ACCESS_BTN')
+	new_state.NO_ACCESS = not no_access_stuff and (rsy_stuff or state.NO_ACCESS) 
+	new_state.PERMITTED_ACCESS = not new_state.NO_ACCESS
+	return new_state
+
+def av_warn(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	search_and_no_access = state.RSY_SRCHD and state.NO_ACCESS
+	if search_and_no_access and not timers.AV_WARN_TMR.running():
+		#print("   -Starting AV_WARN_TMR")
+		timers.AV_WARN_TMR.start()
+	elif not search_and_no_access:
+		timers.AV_WARN_TMR.stop()
+	new_state.AV_WARN = search_and_no_access and (not timers.AV_WARN_TMR.done())
+	new_state.AV_WARN_CMPLT = search_and_no_access and timers.AV_WARN_TMR.done()
+	return new_state	
+
+def rsy_security_violation(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.RSY_SECURITY_VIOLATION = not (((state.AV_WARN or state.AV_WARN_CMPLT) and state.ILCKS_CMPLT) or state.PERMITTED_ACCESS)
+	return new_state	
+
+def rsy_secure(state: RSYState, prev_state: RSYState, timers: RSYTimers):
+	new_state = state.copy()
+	new_state.RSY_SECURE = state.AV_WARN_CMPLT and state.ILCKS_CMPLT and state.RSY_SRCHD and state.NO_ACCESS 
+	return new_state	
 
 #____
 
